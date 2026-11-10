@@ -42,6 +42,7 @@ final class Link {
     /** Sends a command and records the result so the tile can show it. */
     static String sendAndRemember(Context context, String command) {
         String reply = send(command);
+        android.util.Log.i("EarshotLink", command + " -> " + reply);
         prefs(context).edit()
                 .putBoolean("on", "on".equals(reply))
                 .putBoolean("reachable", reply != null)

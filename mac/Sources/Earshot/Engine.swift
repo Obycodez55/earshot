@@ -425,8 +425,8 @@ final class Engine: ObservableObject {
 
     /// Shake listening on the phone is only on while a shake could do something:
     /// something is playing there, and this Mac is connected and idle.
-    private func armShake(_ on: Bool) async {
-        guard let adb, let phone, on != shakeArmed else { return }
+    private func armShake(_ on: Bool, force: Bool = false) async {
+        guard let adb, let phone, force || on != shakeArmed else { return }
         shakeArmed = on
         let verb = on ? "start-foreground-service" : "stopservice"
         _ = await Shell.run(adb, ["-s", phone.serial, "shell", "am", verb,
@@ -454,7 +454,8 @@ final class Engine: ObservableObject {
         defer { mediaWasPlaying = playing }
 
         quietPolls = playing ? 0 : quietPolls + 1
-        if playing, shakeToSwitch { await armShake(true) }
+        // Re-sent every half minute or so: the phone may have killed the listener.
+        if playing, shakeToSwitch { await armShake(true, force: tick % 10 == 0) }
         // Stay armed through short pauses; stand down after about half a minute of silence.
         if shakeArmed, !shakeToSwitch || quietPolls >= 5 { await armShake(false) }
 

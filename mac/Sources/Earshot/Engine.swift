@@ -414,18 +414,20 @@ final class Engine: ObservableObject {
 
     private func connect(_ host: String) async -> Bool {
         guard let adb, await portOpen(host) else { return false }
-        let r = await Shell.run(adb, ["connect", "\(host):\(Self.adbPort)"], timeout: 6)
-        guard r.out.contains("connected to") else {
-            // The port answers but the adb daemon can't reach it: seen after a network
-            // change. Restarting the daemon fixes it. Never do this mid-stream.
-            if r.out.contains("No route to host"), !streaming,
-               Date().timeIntervalSince(lastDaemonRestart) > 120 {
-                lastDaemonRestart = Date()
-                _ = await Shell.run(adb, ["kill-server"], timeout: 6)
-                _ = await Shell.run(adb, ["start-server"], timeout: 10)
-            }
-            return false
+        let target = "\(host):\(Self.adbPort)"
+        var r = await Shell.run(adb, ["connect", target], timeout: 6)
+        // The port answers but the adb daemon can't reach it: seen after a network
+        // change, or when the daemon was started by an earlier build of this app.
+        // Restarting the daemon fixes it, so do that and try again straight away.
+        // Never mid-stream.
+        if !r.out.contains("connected to"), r.out.contains("No route to host"), !streaming,
+           Date().timeIntervalSince(lastDaemonRestart) > 60 {
+            lastDaemonRestart = Date()
+            _ = await Shell.run(adb, ["kill-server"], timeout: 6)
+            _ = await Shell.run(adb, ["start-server"], timeout: 10)
+            r = await Shell.run(adb, ["connect", target], timeout: 6)
         }
+        guard r.out.contains("connected to") else { return false }
         knownHosts = [host] + knownHosts.filter { $0 != host }
         return true
     }

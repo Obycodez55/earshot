@@ -45,13 +45,24 @@ The phone never needs the Mac's address. The Mac opens `adb reverse`, so the pho
 ## Build and install
 
 ```sh
-mac/build.sh                                   # -> mac/build/Earshot.app
+mac/install.sh                                 # builds, installs to /Applications, opens at login
 android/build.sh                               # -> android/build/earshot.apk
-open mac/build/Earshot.app
 adb install -r android/build/earshot.apk       # phone connected by USB
 ```
 
+`mac/build.sh` alone builds `mac/build/Earshot.app` without installing it.
+
 On the phone, open Earshot once, tap **Add tile to Quick Settings**, and allow notifications.
+
+### Optional: sign with a fixed identity
+
+By default the Mac app is ad-hoc signed, so macOS treats every rebuild as a new app and may
+ask for the same permissions again. To avoid that, create a certificate once:
+
+1. Open **Keychain Access** → menu **Keychain Access → Certificate Assistant → Create a Certificate…**
+2. Name: `Earshot Local`. Identity Type: **Self-Signed Root**. Certificate Type: **Code Signing**. Create.
+3. Run `mac/install.sh` again. It prints `Signed with "Earshot Local"` when it has used it.
+   macOS asks once for permission to use the key; choose **Always Allow**.
 
 The phone app is built with the SDK tools directly (`aapt2`, `javac`, `d8`, `apksigner`), so there
 is no Gradle project.
@@ -69,8 +80,7 @@ is no Gradle project.
 6. The phone's volume buttons control how loud it is on the Mac.
 
 After a phone reboot, plug the USB cable in for a few seconds. Earshot switches adb back to
-Wi-Fi by itself; then unplug. For the first 15 seconds or so after the Mac app launches, it is
-still finding the phone.
+Wi-Fi by itself; then unplug. The Mac app takes a few seconds after launching to find the phone.
 
 ## Menu options
 
@@ -104,8 +114,8 @@ Judged by ear and eye, not instruments.
 - Phone calls are not routed. Ringtones and notification sounds stay on the phone.
 - Starting Earshot stops any other scrcpy session on the same phone. Two capture helpers
   split the audio between them, which sounds sped-up and crackly, so leftovers are removed.
-- The Mac app is ad-hoc signed. macOS treats each rebuild as a new app and may repeat
-  permission prompts.
+- Unless you create the signing certificate above, macOS treats each rebuild of the Mac app
+  as a new app and may repeat permission prompts.
 - A Mac playing through Bluetooth headphones adds its own delay and may break lip sync.
 - Mirroring is scrcpy's own window. Apps that block screen capture (banking, some video apps)
   show black. Typing passes through the Mac keyboard as text.

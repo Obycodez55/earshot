@@ -8,6 +8,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Used by install.sh, so installing also sets the app to open at login.
+        if CommandLine.arguments.contains("--enable-login-item"),
+           SMAppService.mainApp.status != .enabled {
+            try? SMAppService.mainApp.register()
+        }
         // Being killed (not just quit from the menu) must still stop the stream,
         // or the capture helper is left running on the phone.
         for sig in [SIGTERM, SIGINT, SIGHUP] {

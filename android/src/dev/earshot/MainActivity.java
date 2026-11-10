@@ -51,6 +51,11 @@ public class MainActivity extends Activity {
         toggle.setOnClickListener(v -> send("toggle"));
         root.addView(toggle);
 
+        Button mirror = new Button(this);
+        mirror.setText("Mirror this screen on the Mac");
+        mirror.setOnClickListener(v -> send("mirror"));
+        root.addView(mirror);
+
         status = new TextView(this);
         status.setTextSize(16);
         status.setPadding(0, pad, 0, 0);

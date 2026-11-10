@@ -58,14 +58,35 @@ private struct MenuContent: View {
         if let problem = engine.problem {
             Text(problem)
         } else if let phone = engine.phone {
-            Text(engine.streaming ? "Playing phone audio · \(phone.label)" : "Phone connected · \(phone.label)")
+            if engine.streaming {
+                Text(engine.mode == .mirror ? "Mirroring phone · \(phone.label)"
+                                            : "Playing phone audio · \(phone.label)")
+            } else {
+                Text("Phone connected · \(phone.label)")
+            }
         } else {
             Text("Looking for phone…")
         }
 
-        Button(engine.streaming ? "Stop" : "Play Phone Audio Here") { engine.toggle() }
-            .disabled(engine.phone == nil && !engine.streaming)
-            .keyboardShortcut("p")
+        if engine.streaming {
+            Button("Stop") { engine.send("stop") }
+                .keyboardShortcut("p")
+            if engine.mode == .mirror {
+                Button("Switch to Audio Only") { engine.send("audio") }
+                Button("Show Mirror Window") { engine.send("mirror") }
+                    .keyboardShortcut("m")
+            } else {
+                Button("Mirror Phone Screen Too") { engine.send("mirror") }
+                    .keyboardShortcut("m")
+            }
+        } else {
+            Button("Play Phone Audio Here") { engine.send("start") }
+                .disabled(engine.phone == nil)
+                .keyboardShortcut("p")
+            Button("Mirror Phone Screen") { engine.send("mirror") }
+                .disabled(engine.phone == nil)
+                .keyboardShortcut("m")
+        }
 
         Divider()
 
@@ -75,6 +96,7 @@ private struct MenuContent: View {
             Text("40 ms (recommended)").tag(40)
             Text("60 ms (weak Wi-Fi)").tag(60)
         }
+        Toggle("Turn Phone Screen Off While Mirroring", isOn: $engine.darkPhoneWhileMirroring)
         Toggle("Shake Phone to Switch", isOn: $engine.shakeToSwitch)
         Toggle("Smoother Sound While Phone Is Locked", isOn: $engine.bigBufferWhenLocked)
         Toggle("Suggest on Phone When Media Starts", isOn: $engine.suggest)

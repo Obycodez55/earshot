@@ -141,6 +141,8 @@ Phase 1a is built and working on the real devices. See the [README](../README.md
 - **Media volume is per output device on this phone** (15 on the speaker, 14 on the capture route), so muting the phone during a restart by setting the volume does not work.
 - **The real fix for both the restart gap and locked-screen bursts is our own receiver** with a buffer that resizes while playing (the Phase 1b idea), reading scrcpy's raw audio stream directly.
 
+**Phase 2 (mirroring with control), first version.** A second stream mode in the Mac app: the same scrcpy process run with its window and input enabled (`--window-title=Earshot`, optionally `--turn-screen-off`) instead of `--no-window --no-control --no-power-on`. One helper serves both picture and sound, so the "two helpers split the audio" problem cannot arise. Mirror mode keeps a fixed buffer and ignores lock events, because a restart would close the window. Started from the Mac menu (⌘M) or the phone app's "Mirror this screen on the Mac" button; the tile and shake stop it like any stream. Needs Xiaomi's "USB debugging (Security settings)" for input.
+
 **Still untested:** sessions of an hour or more, phone lock, incoming call, Mac sleep, the suggestion notification, and behaviour after a phone reboot (cable once, then wireless).
 
 ---

@@ -7,6 +7,11 @@ struct Phone: Equatable {
     var label: String { isWireless ? "Wi-Fi (\(serial.split(separator: ":").first ?? ""))" : "USB" }
 }
 
+enum StreamMode {
+    case audio   // sound on the Mac, picture stays on the phone
+    case mirror  // sound and picture on the Mac, with mouse and keyboard control
+}
+
 /// Keeps an adb link to the phone alive, starts and stops the audio stream,
 /// and answers the phone's Quick Settings tile.
 @MainActor
@@ -15,6 +20,9 @@ final class Engine: ObservableObject {
 
     @Published private(set) var phone: Phone?
     @Published private(set) var streaming = false
+    /// What the running (or most recent) stream is doing.
+    @Published private(set) var mode: StreamMode = .audio
+    private var wantedMode: StreamMode = .audio
     @Published private(set) var problem: String?
 
     @Published var bufferMs: Int {
@@ -24,6 +32,9 @@ final class Engine: ObservableObject {
         didSet { UserDefaults.standard.set(suggest, forKey: "suggest") }
     }
 
+    @Published var darkPhoneWhileMirroring: Bool {
+        didSet { UserDefaults.standard.set(darkPhoneWhileMirroring, forKey: "darkPhoneWhileMirroring") }
+    }
     @Published var shakeToSwitch: Bool {
         didSet { UserDefaults.standard.set(shakeToSwitch, forKey: "shakeToSwitch") }
     }
@@ -57,7 +68,9 @@ final class Engine: ObservableObject {
     private var restarting = false
     private var adaptTask: Task<Void, Never>?
     private var effectiveBufferMs: Int {
-        phoneLocked && bigBufferWhenLocked ? max(bufferMs, Self.lockedBufferMs) : bufferMs
+        // Mirroring keeps one buffer: restarting it would close the window.
+        if wantedMode == .mirror { return max(bufferMs, 40) }
+        return phoneLocked && bigBufferWhenLocked ? max(bufferMs, Self.lockedBufferMs) : bufferMs
     }
 
     private var knownHosts: [String] {
@@ -71,6 +84,7 @@ final class Engine: ObservableObject {
         suggest = d.object(forKey: "suggest") as? Bool ?? true
         bigBufferWhenLocked = d.object(forKey: "bigBufferWhenLocked") as? Bool ?? true
         shakeToSwitch = d.object(forKey: "shakeToSwitch") as? Bool ?? true
+        darkPhoneWhileMirroring = d.object(forKey: "darkPhoneWhileMirroring") as? Bool ?? false
     }
 
     // MARK: lifecycle
@@ -129,8 +143,10 @@ final class Engine: ObservableObject {
 
     func handle(command: String) async -> String {
         switch command {
-        case "toggle": streaming ? stopStream() : await startStream()
-        case "start": if !streaming { await startStream() }
+        case "toggle": if streaming { stopStream() } else { await switchTo(.audio) }
+        case "start": if !streaming { await switchTo(.audio) }
+        case "audio": await switchTo(.audio)
+        case "mirror": await switchTo(.mirror)
         case "stop": stopStream()
         case "locked": screenChanged(locked: true)
         case "unlocked": screenChanged(locked: false)
@@ -142,6 +158,33 @@ final class Engine: ObservableObject {
 
     func toggle() {
         Task { _ = await handle(command: "toggle") }
+    }
+
+    func send(_ command: String) {
+        Task { _ = await handle(command: command) }
+    }
+
+    /// Starts a stream in the given mode, or moves the running one to it.
+    private func switchTo(_ target: StreamMode) async {
+        if streaming, mode == target {
+            if target == .mirror { bringMirrorWindowToFront() }
+            return
+        }
+        guard !restarting else { return }
+        wantedMode = target
+        if streaming, let old = stream {
+            restarting = true
+            defer { restarting = false }
+            stream = nil  // so the old process ending is not treated as "stopped"
+            old.terminate()
+            for _ in 0..<40 where old.isRunning { try? await Task.sleep(nanoseconds: 50_000_000) }
+        }
+        await startStream()
+    }
+
+    private func bringMirrorWindowToFront() {
+        guard let pid = stream?.processIdentifier else { return }
+        NSRunningApplication(processIdentifier: pid)?.activate()
     }
 
     private func startStream(attempt: Int = 0) async {
@@ -160,8 +203,17 @@ final class Engine: ObservableObject {
 
         let p = Process()
         p.executableURL = URL(fileURLWithPath: scrcpy)
-        p.arguments = ["-s", phone.serial, "--no-window", "--no-control", "--no-power-on", "--audio-codec=raw",
-                       "--audio-buffer=\(effectiveBufferMs)"]
+        let startingMode = wantedMode
+        var args = ["-s", phone.serial, "--audio-codec=raw", "--audio-buffer=\(effectiveBufferMs)"]
+        switch startingMode {
+        case .audio:
+            // No window, no input, and never wake the phone's screen.
+            args += ["--no-window", "--no-control", "--no-power-on"]
+        case .mirror:
+            args += ["--window-title=Earshot"]
+            if darkPhoneWhileMirroring { args += ["--turn-screen-off"] }
+        }
+        p.arguments = args
         runningBufferMs = effectiveBufferMs
         var env = ProcessInfo.processInfo.environment
         env["ADB"] = adb
@@ -180,7 +232,14 @@ final class Engine: ObservableObject {
             streamStarted = Date()
             streamAttempt = attempt
             streaming = true
+            mode = startingMode
             problem = nil
+            if startingMode == .mirror {
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_800_000_000)
+                    bringMirrorWindowToFront()
+                }
+            }
             Task { await pushState() }  // don't hold up the reply to the phone's tile
         } catch {
             problem = "Could not start scrcpy: \(error.localizedDescription)"
@@ -255,6 +314,7 @@ final class Engine: ObservableObject {
         if diedEarly, !stopRequested { problem = "Could not start audio. See ~/Library/Logs/Earshot." }
         stopRequested = false
         streaming = false
+        wantedMode = .audio
         phoneLocked = false
         lastStop = Date()
         Task {

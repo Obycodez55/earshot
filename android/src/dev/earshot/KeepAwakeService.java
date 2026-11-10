@@ -33,6 +33,7 @@ public class KeepAwakeService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int missedChecks;
     private boolean watchingScreen;
+    private ShakeDetector shake;
 
     /** Tells the Mac when the screen goes off or on, so it can pick the right buffer. */
     private final BroadcastReceiver screenWatcher = new BroadcastReceiver() {
@@ -57,6 +58,17 @@ public class KeepAwakeService extends Service {
             watchingScreen = true;
         }
         if (!getSystemService(PowerManager.class).isInteractive()) report(true);
+
+        // While playing on the Mac, a shake brings the sound back to the phone.
+        boolean wantShake = intent != null && intent.getBooleanExtra("shake", false);
+        if (wantShake && shake == null) {
+            shake = new ShakeDetector(this,
+                    () -> new Thread(() -> Link.sendAndRemember(this, "stop")).start());
+            shake.start();
+        } else if (!wantShake && shake != null) {
+            shake.stop();
+            shake = null;
+        }
         handler.removeCallbacksAndMessages(null);
         handler.postDelayed(this::checkMac, CHECK_EVERY_MS);
         return START_NOT_STICKY;
@@ -65,6 +77,8 @@ public class KeepAwakeService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        if (shake != null) shake.stop();
+        shake = null;
         if (watchingScreen) {
             unregisterReceiver(screenWatcher);
             watchingScreen = false;

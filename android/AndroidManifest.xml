@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Keep CPU and Wi-Fi awake while playing with the screen locked. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -54,6 +55,11 @@
         <receiver android:name=".ActionReceiver" android:exported="false" />
 
         <!-- Started and stopped by the Mac through adb while audio is playing. -->
+        <service
+            android:name=".ShakeService"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:foregroundServiceType="connectedDevice" />
         <service
             android:name=".KeepAwakeService"
             android:exported="true"

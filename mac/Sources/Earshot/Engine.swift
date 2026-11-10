@@ -24,6 +24,9 @@ final class Engine: ObservableObject {
         didSet { UserDefaults.standard.set(suggest, forKey: "suggest") }
     }
 
+    @Published var shakeToSwitch: Bool {
+        didSet { UserDefaults.standard.set(shakeToSwitch, forKey: "shakeToSwitch") }
+    }
     @Published var bigBufferWhenLocked: Bool {
         didSet { UserDefaults.standard.set(bigBufferWhenLocked, forKey: "bigBufferWhenLocked") }
     }
@@ -37,6 +40,8 @@ final class Engine: ObservableObject {
     private var tick = 0
     private var usbSwitchAttempted: Set<String> = []
     private var mediaWasPlaying = false
+    private var shakeArmed = false
+    private var quietPolls = 0
     private var lastSuggestion = Date.distantPast
     private var lastStop = Date.distantPast
     private var streamStarted = Date.distantPast
@@ -65,6 +70,7 @@ final class Engine: ObservableObject {
         bufferMs = d.object(forKey: "bufferMs") as? Int ?? 40
         suggest = d.object(forKey: "suggest") as? Bool ?? true
         bigBufferWhenLocked = d.object(forKey: "bigBufferWhenLocked") as? Bool ?? true
+        shakeToSwitch = d.object(forKey: "shakeToSwitch") as? Bool ?? true
     }
 
     // MARK: lifecycle
@@ -99,6 +105,7 @@ final class Engine: ObservableObject {
             p.executableURL = URL(fileURLWithPath: adb)
             p.arguments = ["-s", phone.serial, "shell", Self.killHelpers
                            + "; am stopservice -n dev.earshot/.KeepAwakeService"
+                           + "; am stopservice -n dev.earshot/.ShakeService"
                            + "; am broadcast -n dev.earshot/.StateReceiver -a dev.earshot.STATE --ez on false"]
             p.standardOutput = FileHandle.nullDevice
             p.standardError = FileHandle.nullDevice
@@ -298,7 +305,10 @@ final class Engine: ObservableObject {
             if chosen != nil { problem = nil }
         }
 
-        if chosen != nil, suggest, !streaming, tick % 2 == 0 { await checkForMedia() }
+        if chosen == nil { shakeArmed = false }
+        if chosen != nil, suggest || shakeToSwitch || shakeArmed, !streaming, tick % 2 == 0 {
+            await checkForMedia()
+        }
     }
 
     private func listDevices() async -> [(serial: String, state: String)] {
@@ -409,26 +419,46 @@ final class Engine: ObservableObject {
 
     private func pushState() async {
         await broadcast("dev.earshot.STATE", extras: ["--ez", "on", streaming ? "true" : "false"])
+        if streaming { await armShake(false) }  // the keep-awake service listens while playing
         await setKeepAwake(streaming)
+    }
+
+    /// Shake listening on the phone is only on while a shake could do something:
+    /// something is playing there, and this Mac is connected and idle.
+    private func armShake(_ on: Bool) async {
+        guard let adb, let phone, on != shakeArmed else { return }
+        shakeArmed = on
+        let verb = on ? "start-foreground-service" : "stopservice"
+        _ = await Shell.run(adb, ["-s", phone.serial, "shell", "am", verb,
+                                  "-n", "dev.earshot/.ShakeService"], timeout: 6)
     }
 
     /// While playing, the phone app holds the CPU and Wi-Fi awake so locking the
     /// screen doesn't make the stream stutter.
     private func setKeepAwake(_ on: Bool) async {
         guard let adb, let phone else { return }
-        let verb = on ? "start-foreground-service" : "stopservice"
-        _ = await Shell.run(adb, ["-s", phone.serial, "shell", "am", verb,
-                                  "-n", "dev.earshot/.KeepAwakeService"], timeout: 6)
+        var args = ["-s", phone.serial, "shell", "am", on ? "start-foreground-service" : "stopservice",
+                    "-n", "dev.earshot/.KeepAwakeService"]
+        if on { args += ["--ez", "shake", shakeToSwitch ? "true" : "false"] }
+        _ = await Shell.run(adb, args, timeout: 6)
     }
 
-    /// When something starts playing on the phone, ask the phone app to offer "Play on Mac".
+    /// Watches for media playing on the phone: arms shake listening, and when
+    /// something starts, asks the phone app to offer "Play on Mac".
     private func checkForMedia() async {
         guard let adb, let phone else { return }
-        let r = await Shell.run(adb, ["-s", phone.serial, "shell", "dumpsys", "media_session"], timeout: 6)
-        let playing = r.out.range(of: #"state=PlaybackState \{state=(3|PLAYING\(3\))"#,
-                                  options: .regularExpression) != nil
+        // Any app's player counts, whether or not it publishes a media session.
+        let r = await Shell.run(adb, ["-s", phone.serial, "shell",
+            "dumpsys audio | grep -cE 'state:started.*usage=USAGE_(MEDIA|GAME|UNKNOWN)'"], timeout: 6)
+        let playing = (Int(r.out.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) > 0
         defer { mediaWasPlaying = playing }
-        guard playing, !mediaWasPlaying else { return }
+
+        quietPolls = playing ? 0 : quietPolls + 1
+        if playing, shakeToSwitch { await armShake(true) }
+        // Stay armed through short pauses; stand down after about half a minute of silence.
+        if shakeArmed, !shakeToSwitch || quietPolls >= 5 { await armShake(false) }
+
+        guard suggest, playing, !mediaWasPlaying else { return }
         let now = Date()
         guard now.timeIntervalSince(lastSuggestion) > 300, now.timeIntervalSince(lastStop) > 60 else { return }
         lastSuggestion = now

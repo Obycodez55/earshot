@@ -28,7 +28,7 @@ screen-capture consent prompt.
 - **[mac/](mac/)**: a Swift menu-bar app. It finds the phone, moves adb onto Wi-Fi, starts and stops
   scrcpy, and answers the phone's tile on a port bound to localhost only.
 - **[android/](android/)**: a small app with a Quick Settings tile, a "Play this on your Mac?"
-  suggestion, and a service that keeps the phone awake while playing. It captures nothing itself.
+  suggestion, shake detection, and a service that keeps the phone awake while playing. It captures nothing itself.
 
 The phone never needs the Mac's address. The Mac opens `adb reverse`, so the phone talks to
 `127.0.0.1` and adb carries it across. Nothing listens on the network.
@@ -59,8 +59,10 @@ is no Gradle project.
 
 1. Earshot sits in the Mac's menu bar (ear icon).
 2. Tap the **Play on Mac** tile on the phone. Tap again to bring the sound back.
-3. You can also start and stop from the Mac's menu. The tile follows.
-4. The phone's volume buttons control how loud it is on the Mac.
+3. Or **shake the phone** (three quick jolts). It vibrates and the sound moves to the Mac.
+   Shake again to bring it back.
+4. You can also start and stop from the Mac's menu. The tile follows.
+5. The phone's volume buttons control how loud it is on the Mac.
 
 After a phone reboot, plug the USB cable in for a few seconds. Earshot switches adb back to
 Wi-Fi by itself; then unplug. For the first 15 seconds or so after the Mac app launches, it is
@@ -71,6 +73,7 @@ still finding the phone.
 | Option | What it does |
 |---|---|
 | **Buffer** | How much audio the Mac holds in reserve. 40 ms is the default. Lower is tighter lip sync but may crackle; higher survives weaker Wi-Fi. Applies from the next start. |
+| **Shake Phone to Switch** | Shake to send the sound to the Mac, shake again to bring it back. The phone only listens for shakes while the Mac is connected and something is playing (or just stopped), so the motion sensor isn't running all day. Ignored while the screen is off. |
 | **Smoother Sound While Phone Is Locked** | With the screen off there is no picture to sync with, and the phone's Wi-Fi becomes bursty. Earshot restarts the stream with a 200 ms buffer when the screen goes off and returns to the normal buffer when it comes on. Each switch takes a second or two, during which the sound comes from the phone. |
 | **Suggest on Phone When Media Starts** | Shows "Play this on your Mac?" on the phone when something starts playing while the Mac is connected and idle. At most once every five minutes. |
 | **Open at Login** | Starts Earshot with the Mac. |
@@ -106,6 +109,10 @@ Judged by ear and eye, not instruments.
 [design/audio-routing-design.md](design/audio-routing-design.md) has the full reasoning: why
 Bluetooth can't carry the audio, the lip-sync budget, the options that were rejected, test
 results, and the bugs found on the first day of use.
+
+## Licence
+
+[MIT](LICENSE).
 
 ## Credits
 

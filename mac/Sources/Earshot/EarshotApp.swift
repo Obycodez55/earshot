@@ -75,6 +75,7 @@ private struct MenuContent: View {
             Text("40 ms (recommended)").tag(40)
             Text("60 ms (weak Wi-Fi)").tag(60)
         }
+        Toggle("Shake Phone to Switch", isOn: $engine.shakeToSwitch)
         Toggle("Smoother Sound While Phone Is Locked", isOn: $engine.bigBufferWhenLocked)
         Toggle("Suggest on Phone When Media Starts", isOn: $engine.suggest)
         Toggle("Open at Login", isOn: $launchAtLogin)

@@ -306,6 +306,9 @@ final class Engine: ObservableObject {
         }
 
         if chosen == nil { shakeArmed = false }
+        // The phone may kill its side of things (app update, battery saver). Re-assert
+        // the keep-awake service, which also listens for shakes, every half minute.
+        if chosen != nil, streaming, !restarting, tick % 10 == 5 { await setKeepAwake(true) }
         if chosen != nil, suggest || shakeToSwitch || shakeArmed, !streaming, tick % 2 == 0 {
             await checkForMedia()
         }

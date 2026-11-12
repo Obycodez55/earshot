@@ -88,6 +88,7 @@ Wi-Fi by itself; then unplug. The Mac app takes a few seconds after launching to
 |---|---|
 | **Buffer** | How much audio the Mac holds in reserve. 40 ms is the default. Lower is tighter lip sync but may crackle; higher survives weaker Wi-Fi. Applies from the next start. |
 | **Turn Phone Screen Off While Mirroring** | Keeps the phone's display dark while its screen is shown on the Mac. Applies from the next time mirroring starts. |
+| **Pause Mac Media While Phone Plays** | If something is playing on the Mac when the phone's sound arrives, Earshot pauses it, and resumes it when the sound goes back to the phone. It only resumes what it saw go quiet after its own pause, so it never starts something you had stopped yourself. |
 | **Shake Phone to Switch** | Shake to send the sound to the Mac, shake again to bring it back. The phone only listens for shakes while the Mac is connected and something is playing (or just stopped), so the motion sensor isn't running all day. Ignored while the screen is off. |
 | **Smoother Sound While Phone Is Locked** | With the screen off there is no picture to sync with, and the phone's Wi-Fi becomes bursty. Earshot restarts the stream with a 200 ms buffer when the screen goes off and returns to the normal buffer when it comes on. Each switch takes a second or two, during which the sound comes from the phone. |
 | **Suggest on Phone When Media Starts** | Shows "Play this on your Mac?" on the phone when something starts playing while the Mac is connected and idle. At most once every five minutes. |
@@ -116,6 +117,10 @@ Judged by ear and eye, not instruments.
   split the audio between them, which sounds sped-up and crackly, so leftovers are removed.
 - Unless you create the signing certificate above, macOS treats each rebuild of the Mac app
   as a new app and may repeat permission prompts.
+- Pausing the Mac's own media works for apps that respond to the keyboard's play/pause key
+  (Music, Spotify, browsers, video players). Games and command-line players keep playing.
+  Browsers hold their audio output open for about ten seconds after pausing, so a phone
+  session shorter than that may not resume the Mac's media afterwards.
 - A Mac playing through Bluetooth headphones adds its own delay and may break lip sync.
 - Mirroring is scrcpy's own window. Apps that block screen capture (banking, some video apps)
   show black. Typing passes through the Mac keyboard as text.

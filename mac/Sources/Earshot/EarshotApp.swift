@@ -102,6 +102,7 @@ private struct MenuContent: View {
             Text("60 ms (weak Wi-Fi)").tag(60)
         }
         Toggle("Turn Phone Screen Off While Mirroring", isOn: $engine.darkPhoneWhileMirroring)
+        Toggle("Pause Mac Media While Phone Plays", isOn: $engine.pauseMacMedia)
         Toggle("Shake Phone to Switch", isOn: $engine.shakeToSwitch)
         Toggle("Smoother Sound While Phone Is Locked", isOn: $engine.bigBufferWhenLocked)
         Toggle("Suggest on Phone When Media Starts", isOn: $engine.suggest)

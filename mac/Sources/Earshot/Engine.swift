@@ -42,6 +42,10 @@ final class Engine: ObservableObject {
         didSet { UserDefaults.standard.set(bigBufferWhenLocked, forKey: "bigBufferWhenLocked") }
     }
 
+    @Published var pauseMacMedia: Bool {
+        didSet { UserDefaults.standard.set(pauseMacMedia, forKey: "pauseMacMedia") }
+    }
+
     private var adb: String?
     private var scrcpy: String?
     private var stream: Process?
@@ -59,6 +63,9 @@ final class Engine: ObservableObject {
     private var streamAttempt = 0
     private var stopRequested = false
     private var lastDaemonRestart = Date.distantPast
+    /// True once we have paused the Mac's own media and seen it go quiet.
+    private var pausedMacMedia = false
+    private var macPauseTask: Task<Void, Never>?
 
     /// With the screen off there is no picture to stay in sync with, and the phone's
     /// Wi-Fi delivers audio in uneven bursts, so a much larger buffer is used.
@@ -85,6 +92,7 @@ final class Engine: ObservableObject {
         bigBufferWhenLocked = d.object(forKey: "bigBufferWhenLocked") as? Bool ?? true
         shakeToSwitch = d.object(forKey: "shakeToSwitch") as? Bool ?? true
         darkPhoneWhileMirroring = d.object(forKey: "darkPhoneWhileMirroring") as? Bool ?? false
+        pauseMacMedia = d.object(forKey: "pauseMacMedia") as? Bool ?? true
     }
 
     // MARK: lifecycle
@@ -111,6 +119,7 @@ final class Engine: ObservableObject {
 
     func shutdown() {
         loop?.cancel()
+        resumeMacMedia()
         stream?.terminate()
         stream = nil
         // Blocking on purpose: the app is about to exit.
@@ -172,6 +181,7 @@ final class Engine: ObservableObject {
         }
         guard !restarting else { return }
         wantedMode = target
+        if !streaming { pauseMacMediaIfPlaying() }
         if streaming, let old = stream {
             restarting = true
             defer { restarting = false }
@@ -193,6 +203,7 @@ final class Engine: ObservableObject {
         guard let phone else {
             problem = "Phone not found."
             if streaming { streaming = false; lastStop = Date() }
+            resumeMacMedia()
             return
         }
 
@@ -243,7 +254,41 @@ final class Engine: ObservableObject {
             Task { await pushState() }  // don't hold up the reply to the phone's tile
         } catch {
             problem = "Could not start scrcpy: \(error.localizedDescription)"
+            resumeMacMedia()
         }
+    }
+
+    // MARK: the Mac's own media
+
+    /// Pauses whatever is playing on the Mac so the phone's sound replaces it
+    /// instead of mixing with it. It only counts as "paused by us" (and so gets
+    /// resumed later) once the apps that were making sound have gone quiet:
+    /// otherwise a later resume could start something that was never playing.
+    private func pauseMacMediaIfPlaying() {
+        guard pauseMacMedia, !pausedMacMedia, macPauseTask == nil else { return }
+        let noisy = MacMedia.appsMakingSound()
+        guard !noisy.isEmpty else { return }
+        MacMedia.pause()
+        macPauseTask = Task { [weak self] in
+            // Browsers keep their output open for about ten seconds after pausing.
+            for _ in 0..<60 {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                if Task.isCancelled { return }
+                if MacMedia.appsMakingSound().isDisjoint(with: noisy) {
+                    self?.pausedMacMedia = true
+                    break
+                }
+            }
+            self?.macPauseTask = nil
+        }
+    }
+
+    private func resumeMacMedia() {
+        macPauseTask?.cancel()
+        macPauseTask = nil
+        guard pausedMacMedia else { return }
+        pausedMacMedia = false
+        MacMedia.play()
     }
 
     private func stopStream() {
@@ -317,6 +362,7 @@ final class Engine: ObservableObject {
         wantedMode = .audio
         phoneLocked = false
         lastStop = Date()
+        resumeMacMedia()
         Task {
             if stream == nil { await removeLeftoverHelpers() }
             await pushState()
